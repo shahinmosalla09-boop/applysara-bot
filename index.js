@@ -288,3 +288,59 @@ http.createServer(function (req, res) {
 }).listen(process.env.PORT || 3000);
 
 poll();
+
+// ═══ v3 overrides: Zibal payment + support texts ═══
+async function finishOrder(chatId, sess) {
+  const d = sess.data;
+  const code = 'AS-' + (100000 + Math.floor(Math.random() * 900000));
+  d.order_code = code;
+  d.chat_id = String(chatId);
+  try {
+    await fetch(SITE + '/api/botorder.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ secret: BOT_SECRET }, d)) });
+  } catch (e) {}
+  let payUrl = null;
+  try {
+    const pr = await fetch(SITE + '/api/botpay.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: BOT_SECRET, order_code: code, plan: d.plan }) });
+    const pd = await pr.json();
+    if (pd.ok && pd.url) payUrl = pd.url;
+  } catch (e) {}
+  if (payUrl) {
+    const kb = { inline_keyboard: [[{ text: '💳 پرداخت آنلاین امن (زیبال)', url: payUrl }]] };
+    await send(chatId, '🎉 <b>سفارشت ثبت شد!</b>\n\n🧾 کد پیگیری: <b>' + code + '</b>\n📦 بسته: ' + PLANS[d.plan].t + ' — ' + PLANS[d.plan].p + '\n\n💳 برای نهایی شدن سفارش، از دکمه زیر پرداخت رو انجام بده.\nپرداخت از طریق درگاه امن <b>زیبال</b> (شاپرک) انجام میشه.\n\nبعد از پرداخت، تاییدیه همینجا برات میاد ✅', kb);
+    await send(chatId, 'سؤالی داشتی؟ پشتیبانی: @Applysara', mainKb);
+  } else {
+    await send(chatId, '🎉 <b>سفارشت ثبت شد!</b>\n\n🧾 کد پیگیری: <b>' + code + '</b>\n📦 بسته: ' + PLANS[d.plan].t + ' — ' + PLANS[d.plan].p + '\n\n💳 لینک پرداخت به زودی همینجا ارسال میشه.\n💬 پشتیبانی: @Applysara', mainKb);
+  }
+  await notifyAdmin('🛒 <b>سفارش جدید از بات!</b>\n\n🧾 ' + code + '\n' + orderSummary(d) + '\n\n🆔 چت مشتری: <code>' + chatId + '</code>' + (payUrl ? '\n\n💳 لینک پرداخت ارسال شد — منتظر پرداخت.' : '\n\n⚠️ لینک پرداخت ساخته نشد! دستی پیگیری کن.'));
+  S.delete(chatId);
+}
+
+function answer(text, firstName) {
+  if (/قیمت|تعرفه|هزینه|💰/.test(text)) return '💰 <b>تعرفه‌های اپلای‌سرا:</b>\n\n📦 <b>پایه — ۴۹۰ هزار تومان</b>\n' + PLANS.paye.d + '\n\n🚀 <b>حرفه‌ای — ۸۹۰ هزار تومان</b>\n' + PLANS.herfei.d + '\n\n💎 <b>فول اپلای — ۱.۴۹ میلیون تومان</b>\n' + PLANS.full.d + '\n\n💳 پرداخت آنلاین امن با زیبال\n👈 «🛒 ثبت سفارش» رو بزن!';
+  if (/زمان|تحویل|⏱/.test(text)) return '⏱ <b>زمان تحویل:</b>\n\nپیش‌نویس اول بین <b>۲۴ تا ۴۸ ساعت</b> آماده میشه.\nبسته فول اپلای پیگیری فوری داره 🚀';
+  if (/sop|اس او پی|❓/i.test(text)) return '📄 <b>SOP چیست؟</b>\n\nStatement of Purpose مهم‌ترین سند اپلای توئه — نامه‌ای که به دانشگاه میگه کی هستی و چرا باید قبولت کنن.\n\nما از صفر بر اساس داستان خودت می‌نویسیمش ✨';
+  if (/پشتیبان|تماس|مشاوره|📞|شماره/.test(text)) return '📞 <b>پشتیبانی اپلای‌سرا</b>\n\nپیامت رو همینجا بنویس یا مستقیم پیام بده:\n💬 @Applysara\n\nدر اسرع وقت جواب میدیم!';
+  if (/سلام|درود/.test(text)) return 'سلام ' + firstName + '! 👋 چه کمکی می‌تونم بکنم؟\n\nاز منوی پایین انتخاب کن 👇';
+  if (/ممنون|مرسی|تشکر/.test(text)) return 'خواهش می‌کنم! 🌟 موفق باشی.';
+  return null;
+}
+
+const announcedLocal = new Set();
+async function checkPaid() {
+  try {
+    const r = await fetch(SITE + '/api/botorder.php?paid_unannounced=1&secret=' + encodeURIComponent(BOT_SECRET));
+    const d = await r.json();
+    for (const o of (d.orders || [])) {
+      if (announcedLocal.has(o.order_code)) continue;
+      announcedLocal.add(o.order_code);
+      if (o.chat_id) {
+        await send(o.chat_id, '✅ <b>پرداختت با موفقیت تایید شد!</b> 🎉\n\n🧾 کد سفارش: <b>' + o.order_code + '</b>\n\nسفارشت وارد صف نگارش شد و پیش‌نویس اول رو ظرف <b>۲۴ تا ۴۸ ساعت</b> همینجا دریافت می‌کنی.\n\nممنون از اعتمادت 🌟', mainKb);
+      }
+      await notifyAdmin('💰 <b>پرداخت موفق!</b>\n\n🧾 ' + o.order_code + '\n👤 ' + o.name + ' — ' + o.phone + '\n📦 ' + (PLANS[o.plan] ? PLANS[o.plan].t : o.plan) + '\n\n⚡️ نگارش رو شروع کن!');
+      try {
+        await fetch(SITE + '/api/botorder.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: BOT_SECRET, announced: o.order_code }) });
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+setInterval(checkPaid, 60000);
