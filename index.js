@@ -1,6 +1,6 @@
 const TOKEN = '8645931418:AAE-oWacVIm98KdmNcQdZOLCiXE3ouRTHtQ';
 const API = 'https://api.telegram.org/bot' + TOKEN;
-const SITE = 'http://applysara.ir';
+const SITE = 'https://applysara.ir';
 const ADMIN_PASS = 'change-me-now-123';
 const NOTIFY_SECRET = 'as-notify-7391';
 const BOT_SECRET = 'as-bot-8267';
